@@ -1,118 +1,187 @@
-const Game = {
-    money: 5000,
-    employees: [],
-    components: [],
-    selectedEmp: null,
-    
-    init() {
-        this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.resize();
-        window.addEventListener('resize', () => this.resize());
+class Employee {
+    constructor(id, name, x, y, specialty) {
+        this.id = id;
+        this.name = name;
+        this.x = x;
+        this.y = y;
+        this.specialty = specialty; // 'IT', 'Admin'
         
-        // 點擊偵測
-        this.canvas.addEventListener('mousedown', (e) => this.handleClick(e));
+        // 核心屬性
+        this.iq = 10 + Math.random() * 20;
+        this.eff = 10 + Math.random() * 20;
+        this.stamina = 100;         // 當前體力
+        this.maxStamina = 100;      // 體力上限 (可透過健身房提升)
+        this.stress = 0;
         
-        // 初始設備
-        this.components.push(new OfficeComponent(Date.now(), 'PC', 200, 200));
-        
-        this.loop();
-    },
+        // 狀態與行為控制
+        this.state = 'IDLE';        // IDLE, WORKING, TRAINING, RESTING, GOING_HOME, OFF_WORK
+        this.target = null;
+        this.speed = 1.2 + (this.eff / 100);
+        this.radius = 12;
+    }
 
-    resize() {
-        this.canvas.width = this.canvas.parentElement.clientWidth;
-        this.canvas.height = this.canvas.parentElement.clientHeight;
-    },
+    /**
+     * @param {Array} components 所有的設備清單
+     * @param {number} currentHour 當前遊戲小時 (0-23)
+     */
+    update(components, currentHour) {
+        // 如果是下班時間且人還在公司，強制進入回家邏輯
+        const isWorkTime = currentHour >= 8 && currentHour < 17;
+        
+        if (!isWorkTime) {
+            this.state = 'GOING_HOME';
+        }
 
-    recruit() {
-        if (this.money >= 1000) {
-            this.money -= 1000;
-            const type = Math.random() > 0.5 ? 'IT' : 'Admin';
-            const names = ['艾力克斯', '貝拉', '查理', '黛安娜'];
-            const newEmp = new Employee(
-                Date.now(), 
-                names[Math.floor(Math.random()*names.length)],
-                Math.random() * this.canvas.width,
-                Math.random() * this.canvas.height,
-                type
+        this.think(components, isWorkTime);
+        this.move();
+        
+        // 體力自然消耗與恢復的基礎邏輯（非工作狀態下的小量變化）
+        if (this.state === 'OFF_WORK') {
+            this.stamina = Math.min(this.maxStamina, this.stamina + 0.5); // 在家休息恢復快
+        }
+    }
+
+    think(components, isWorkTime) {
+        // 1. 下班邏輯優先權最高
+        if (this.state === 'GOING_HOME') {
+            const door = components.find(c => c.type === 'Door');
+            if (door) {
+                this.target = door;
+            }
+            return;
+        }
+
+        // 2. 如果體力太低 (<20)，強制尋找健身房或休息區
+        if (this.stamina < 20 && isWorkTime) {
+            this.state = 'TRAINING';
+            const gym = components.find(c => c.type === 'Gym');
+            if (gym) {
+                this.target = gym;
+            } else {
+                // 如果沒健身房，就隨便找個地方發呆休息
+                this.target = components[Math.floor(Math.random() * components.length)];
+            }
+            return;
+        }
+
+        // 3. 正常工作邏輯
+        if (!this.target && isWorkTime) {
+            this.state = 'WORKING';
+            // 自動判斷：根據專長優先找對應設備
+            const matched = components.filter(c => 
+                (this.specialty === 'IT' && c.type === 'PC') || 
+                (this.specialty === 'Admin' && c.type === 'Desk')
             );
-            this.employees.push(newEmp);
-            this.updateUI();
+            
+            this.target = matched.length > 0 
+                ? matched[Math.floor(Math.random() * matched.length)]
+                : components.find(c => c.type === 'PC' || c.type === 'Desk');
         }
-    },
-
-    buyPC() {
-        if (this.money >= 500) {
-            this.money -= 500;
-            this.components.push(new OfficeComponent(Date.now(), 'PC', Math.random()*600+50, Math.random()*400+50));
-            this.updateUI();
-        }
-    },
-
-    // 修正部分：補上購置桌椅的邏輯
-    buyDesk() {
-        if (this.money >= 300) {
-            this.money -= 300;
-            // 這裡 type 必須為 'Desk' 才能觸發 Employee.js 裡的 Admin 邏輯判斷
-            this.components.push(new OfficeComponent(Date.now(), 'Desk', Math.random()*600+50, Math.random()*400+50));
-            this.updateUI();
-        }
-    },
-
-    handleClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-
-        this.selectedEmp = this.employees.find(emp => 
-            Math.sqrt((mx - emp.x)**2 + (my - emp.y)**2) < 20
-        );
-        
-        if (this.selectedEmp) UI.showPanel(this.selectedEmp);
-        else UI.hidePanel();
-    },
-
-    updateUI() {
-        document.getElementById('money-display').innerText = Math.floor(this.money);
-        document.getElementById('staff-count').innerText = this.employees.length;
-    },
-
-    loop() {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // 畫網格
-        this.ctx.strokeStyle = '#334155';
-        this.ctx.lineWidth = 0.5;
-        for(let i=0; i<this.canvas.width; i+=50) {
-            this.ctx.beginPath(); this.ctx.moveTo(i,0); this.ctx.lineTo(i,this.canvas.height); this.ctx.stroke();
-        }
-
-        this.components.forEach(c => c.draw(this.ctx));
-        this.employees.forEach(e => {
-            e.update(this.components);
-            e.draw(this.ctx, e === this.selectedEmp);
-        });
-
-        if (this.selectedEmp) UI.updatePanel(this.selectedEmp);
-        
-        requestAnimationFrame(() => this.loop());
     }
-};
 
-const UI = {
-    showPanel(emp) {
-        document.getElementById('info-panel').classList.remove('hidden');
-        document.getElementById('p-name').innerText = emp.name;
-        document.getElementById('p-specialty').innerText = `專業：${emp.specialty}`;
-    },
-    hidePanel() {
-        document.getElementById('info-panel').classList.add('hidden');
-    },
-    updatePanel(emp) {
-        document.getElementById('bar-iq').style.width = `${Math.min(emp.iq, 100)}%`;
-        document.getElementById('bar-eff').style.width = `${Math.min(emp.eff, 100)}%`;
-        document.getElementById('bar-stress').style.width = `${emp.stress * 5}%`;
+    move() {
+        if (!this.target || this.state === 'OFF_WORK') return;
+
+        const dx = (this.target.x + 20) - this.x;
+        const dy = (this.target.y + 20) - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 5) {
+            // 體力會影響移動速度
+            const staminaFactor = this.stamina > 0 ? (this.stamina / 100) * 0.5 + 0.5 : 0.2;
+            this.x += (dx / dist) * this.speed * staminaFactor;
+            this.y += (dy / dist) * this.speed * staminaFactor;
+        } else {
+            // 到達目標，開始執行動作
+            this.interact();
+        }
     }
-};
 
-window.onload = () => Game.init();
+    interact() {
+        if (!this.target) return;
+
+        // 根據目標類型執行不同的屬性增減
+        switch (this.target.type) {
+            case 'PC':
+                this.iq += 0.05;              // 訓練智力
+                this.stamina -= 0.1;         // 消耗體力
+                this.stress += 0.02;         // 增加壓力
+                // 這裡的錢會由 main.js 根據 iq 判斷產出
+                break;
+            
+            case 'Desk':
+                this.eff += 0.05;            // 訓練效率
+                this.stamina -= 0.08;        // 消耗體力
+                this.stress += 0.01;
+                break;
+
+            case 'Gym':
+                this.stamina += 0.3;         // 健身房恢復體力快
+                this.maxStamina += 0.01;     // 提升體力上限
+                if (this.stamina >= this.maxStamina) {
+                    this.stamina = this.maxStamina;
+                    this.target = null;      // 練滿了就找下一個目標
+                }
+                break;
+
+            case 'Door':
+                if (this.state === 'GOING_HOME') {
+                    this.state = 'OFF_WORK'; // 進入下班狀態
+                    this.x = this.target.x;  // 停在門口消失
+                    this.y = this.target.y;
+                    this.target = null;
+                }
+                break;
+        }
+
+        // 如果在工作中壓力爆表或體力透支，放棄當前目標
+        if (this.stress > 50 || this.stamina <= 0) {
+            this.target = null;
+        }
+    }
+
+    draw(ctx, isSelected) {
+        // 如果下班了，就不畫出來（隱藏職員）
+        if (this.state === 'OFF_WORK') return;
+
+        ctx.save();
+        
+        // 選中光圈
+        if (isSelected) {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius + 5, 0, Math.PI * 2);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        // 繪製職員主體
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        
+        // 顏色根據狀態改變：工作(藍/黃), 休息/健身(綠), 累了(紅)
+        if (this.stamina < 20) {
+            ctx.fillStyle = '#f87171'; // 累了變紅色
+        } else if (this.state === 'TRAINING') {
+            ctx.fillStyle = '#4ade80'; // 健身變綠色
+        } else {
+            ctx.fillStyle = this.specialty === 'IT' ? '#38bdf8' : '#fbbf24';
+        }
+        
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 繪製簡易體力條在頭上
+        const barW = 20;
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(this.x - barW/2, this.y - 20, barW, 4);
+        ctx.fillStyle = '#4ade80';
+        ctx.fillRect(this.x - barW/2, this.y - 20, barW * (this.stamina / this.maxStamina), 4);
+
+        ctx.restore();
+    }
+}
