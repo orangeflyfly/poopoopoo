@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>我的公司模擬器 - 開發預覽</title>
+    <style>
+        /* 基本樣式設定，確保畫面不是全黑 */
+        body { margin: 0; background: #1a1a1a; color: #eee; font-family: "Microsoft JhengHei", sans-serif; display: flex; flex-direction: column; align-items: center; }
+        h2 { margin: 10px 0; }
+        #game-container { position: relative; border: 4px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        canvas { background: #2c3e50; display: block; cursor: crosshair; }
+        .ui-panel { padding: 10px; background: #333; width: 800px; display: flex; justify-content: space-between; }
+        .log { font-size: 12px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <h2>🏢 公司經營模擬器 (v0.1)</h2>
+    
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+    </div>
+
+    <div class="ui-panel">
+        <div>
+            <strong>員工動態：</strong> <span id="statusText">等待啟動...</span>
+        </div>
+        <div class="log" id="debugLog">系統日誌：準備就緒</div>
+    </div>
+
+<script>
+// --- 1. 初始化與全域變數 ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const statusText = document.getElementById('statusText');
+const debugLog = document.getElementById('debugLog');
+
+const employees = [];
+const components = [];
+
+// --- 2. 類別定義 ---
+class OfficeComponent {
+    constructor(type, x, y, color) {
+        this.type = type;
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.size = 40;
+    }
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Arial';
+        ctx.fillText(this.type, this.x + 5, this.y + 25);
+    }
+}
+
+class Employee {
+    constructor(name, x, y) {
+        this.name = name;
+        this.x = x;
+        this.y = y;
+        this.iq = 10;
+        this.target = null;
+        this.speed = 1.5;
+    }
+
+    think() {
+        if (!this.target && components.length > 0) {
+            // 尋找最近的設備
+            this.target = components[Math.floor(Math.random() * components.length)];
+            debugLog.innerText = `系統日誌：${this.name} 決定去使用 ${this.target.type}`;
+        }
+    }
+
+    move() {
+        if (this.target) {
+            const dx = this.target.x + 20 - this.x;
+            const dy = this.target.y + 20 - this.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist > 5) {
+                this.x += (dx / dist) * this.speed;
+                this.y += (dy / dist) * this.speed;
+            } else {
+                this.iq += 1;
+                this.target = null; // 到達後重置，重新思考
+                statusText.innerText = `${this.name} 提升了智力！目前 IQ: ${this.iq}`;
+            }
+        }
+    }
+
+    draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = '#2ecc71'; // 員工是綠色的小圓點
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.stroke();
+        
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 13px Arial';
+        ctx.fillText(`${this.name} (IQ:${this.iq})`, this.x - 30, this.y - 20);
+    }
+}
+
+// --- 3. 遊戲啟動邏輯 ---
+function init() {
+    console.log("遊戲初始化中...");
+    
+    // 放置設備
+    components.push(new OfficeComponent('電腦', 100, 100, '#3498db'));
+    components.push(new OfficeComponent('飲水機', 600, 150, '#9b59b6'));
+    components.push(new OfficeComponent('辦公桌', 400, 350, '#e67e22'));
+
+    // 產生員工
+    employees.push(new Employee('小王', 50, 450));
+    employees.push(new Employee('小美', 750, 450));
+
+    requestAnimationFrame(gameLoop);
+}
+
+function gameLoop() {
+    // 1. 清除畫面
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 2. 畫出背景網格（增加視覺感）
+    ctx.strokeStyle = '#34495e';
+    ctx.lineWidth = 0.5;
+    for(let i=0; i<canvas.width; i+=50) {
+        ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke();
+    }
+    for(let i=0; i<canvas.height; i+=50) {
+        ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke();
+    }
+
+    // 3. 繪製設備
+    components.forEach(c => c.draw());
+
+    // 4. 更新與繪製員工
+    employees.forEach(e => {
+        e.think();
+        e.move();
+        e.draw();
+    });
+
+    requestAnimationFrame(gameLoop);
+}
+
+// 確保網頁讀取完才執行
+window.onload = init;
+</script>
+</body>
+</html>
