@@ -9,10 +9,18 @@
 <body>
     <div id="game-wrapper">
         <header class="game-header">
+            <div class="stat">📅 時間: <span id="game-time">08:00</span></div>
             <div class="stat">💰 資金: $<span id="money-display">5000</span></div>
             <div class="stat">👥 員工: <span id="staff-count">0</span></div>
             <div class="stat">🏢 評價: <span id="reputation">⭐ 1.0</span></div>
         </header>
+
+        <div id="project-container" style="background: rgba(0,0,0,0.3); padding: 5px 20px;">
+            <label style="font-size: 12px; color: #38bdf8;">🚀 當前專案進度</label>
+            <div class="progress-bg" style="height: 12px; margin-top: 5px;">
+                <div id="project-progress" class="progress-fill" style="width: 0%; background: #38bdf8; box-shadow: 0 0 10px #38bdf8;"></div>
+            </div>
+        </div>
 
         <main id="game-container">
             <canvas id="gameCanvas"></canvas>
@@ -32,6 +40,10 @@
                         <div class="progress-bg"><div id="bar-eff" class="progress-fill"></div></div>
                     </div>
                     <div class="stat-group">
+                        <label>🔋 體力 (Stamina)</label>
+                        <div class="progress-bg"><div id="bar-stamina" class="progress-fill" style="background: #4ade80;"></div></div>
+                    </div>
+                    <div class="stat-group">
                         <label>😊 壓力值 (Stress)</label>
                         <div class="progress-bg"><div id="bar-stress" class="progress-fill stress"></div></div>
                     </div>
@@ -44,6 +56,8 @@
             <button class="menu-btn" onclick="Game.recruit()">🤝 招募員工 ($1000)</button>
             <button class="menu-btn" onclick="Game.buyPC()">💻 購置電腦 ($500)</button>
             <button class="menu-btn" onclick="Game.buyDesk()">🛋️ 購置桌椅 ($300)</button>
+            <button class="menu-btn" onclick="Game.buyGym()">🏋️ 健身設施 ($800)</button>
+            <button class="menu-btn" onclick="Game.buyDoor()">🚪 更改大門 ($500)</button>
         </footer>
     </div>
 
