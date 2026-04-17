@@ -3,6 +3,7 @@ const Game = {
     employees: [],
     components: [],
     selectedEmp: null,
+    reputation: 1.0, // 新增：評價系統數值
 
     // --- 遊戲狀態變數 ---
     gameHour: 8.0,
@@ -16,10 +17,10 @@ const Game = {
     officePadding: 60,
 
     // --- 裝修模式相關變數 ---
-    isEditMode: false,
-    draggingComponent: null,
-    dragOffset: { x: 0, y: 0 },
-    originalPos: { x: 0, y: 0 },
+    isEditMode: false,          
+    draggingComponent: null,    
+    dragOffset: { x: 0, y: 0 }, 
+    originalPos: { x: 0, y: 0 }, 
 
     init() {
         this.canvas = document.getElementById('gameCanvas');
@@ -232,6 +233,12 @@ const Game = {
         document.getElementById('money-display').innerText = Math.floor(this.money);
         document.getElementById('staff-count').innerText = this.employees.length;
         
+        // 更新評價系統 (Reputation)
+        this.reputation = 1.0 + (this.employees.length * 0.2) + (this.money / 10000);
+        if (document.getElementById('reputation')) {
+            document.getElementById('reputation').innerText = `⭐ ${this.reputation.toFixed(1)}`;
+        }
+
         if(document.getElementById('game-time')) {
             const h = Math.floor(this.gameHour);
             const m = Math.floor((this.gameHour % 1) * 60);
@@ -246,8 +253,8 @@ const Game = {
         if (this.isEditMode) return;
 
         this.employees.forEach(emp => {
+            // 只有正在工作且對象是 PC 的 IT 員能產出進度，且下班時不產出
             if (emp.state === 'WORKING' && emp.target && emp.target.type === 'PC') {
-                // 基礎進度產出受智力與效率影響
                 this.projectProgress += (emp.iq * (emp.eff / 20)) / 5000;
             }
         });
@@ -290,8 +297,8 @@ const Game = {
 
         // 4. 更新並繪製員工
         this.employees.forEach(e => {
-            // 這裡傳入 components 與 gameHour，Employee 內部會處理性格決策
-            e.update(this.components, this.gameHour);
+            // --- 修正：傳入 this.employees，社交系統(checkSocial)才能運作 ---
+            e.update(this.components, this.gameHour, this.employees);
             e.draw(this.ctx, e === this.selectedEmp);
         });
 
@@ -311,6 +318,10 @@ const UI = {
         document.getElementById('info-panel').classList.remove('hidden');
         document.getElementById('p-name').innerText = emp.name;
         document.getElementById('p-specialty').innerText = `專業：${emp.specialty}`;
+        // 面板顯示性格標籤
+        if(emp.traitName) {
+            document.getElementById('p-specialty').innerText += ` | 性格：${emp.traitName}`;
+        }
     },
     hidePanel() {
         document.getElementById('info-panel').classList.add('hidden');
