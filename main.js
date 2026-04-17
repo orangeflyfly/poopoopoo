@@ -4,16 +4,22 @@ const Game = {
     components: [],
     selectedEmp: null,
 
-    // --- 調整與新增變數 ---
-    gameHour: 8.0,           // 遊戲從早上 8 點開始
-    timeSpeed: 0.001,        // 修正 3：時間流速調慢 (原本 0.005 太快)
-    projectProgress: 0,      
-    projectGoal: 100,        
-    projectReward: 5000,     
-    
-    // 修正 4 & 5：定義網格大小與佈局範圍
-    gridSize: 50,            // 網格大小 50x50
-    officePadding: 60,       // 離邊界的距離
+    // --- 遊戲狀態變數 ---
+    gameHour: 8.0,
+    timeSpeed: 0.001,
+    projectProgress: 0,
+    projectGoal: 100,
+    projectReward: 5000,
+
+    // --- 佈局與網格變數 ---
+    gridSize: 50,
+    officePadding: 60,
+
+    // --- 新增：裝修模式相關變數 ---
+    isEditMode: false,          // 是否處於裝修模式
+    draggingComponent: null,    // 當前正在拖曳的元件
+    dragOffset: { x: 0, y: 0 }, // 滑鼠點擊位置與元件左上角的偏移量
+    originalPos: { x: 0, y: 0 }, // 拖曳前的原始位置（用於重疊時彈回）
 
     init() {
         this.canvas = document.getElementById('gameCanvas');
@@ -21,10 +27,12 @@ const Game = {
         this.resize();
         window.addEventListener('resize', () => this.resize());
         
-        // 點擊偵測
-        this.canvas.addEventListener('mousedown', (e) => this.handleClick(e));
+        // 註冊滑鼠事件
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
         
-        // 初始設備：使用網格對齊的位置
+        // 初始設備
         this.components.push(new OfficeComponent(Date.now(), 'Door', 50, 250));
         this.components.push(new OfficeComponent(Date.now() + 1, 'PC', 150, 150));
         this.components.push(new OfficeComponent(Date.now() + 2, 'Desk', 150, 250));
@@ -37,36 +45,116 @@ const Game = {
         this.canvas.height = this.canvas.parentElement.clientHeight;
     },
 
-    // 修正 4 & 5：核心邏輯 - 尋找不重疊且對齊網格的座標
+    // --- 新增：切換裝修模式 ---
+    toggleEditMode() {
+        this.isEditMode = !this.isEditMode;
+        const btn = document.getElementById('edit-mode-btn');
+        const container = document.getElementById('game-container');
+
+        if (this.isEditMode) {
+            btn.innerText = "🛠️ 裝修模式：ON";
+            btn.classList.add('active');
+            container.classList.add('edit-mode-active');
+            this.selectedEmp = null; // 進入裝修模式時取消選取員工
+            UI.hidePanel();
+        } else {
+            btn.innerText = "🛠️ 裝修模式：OFF";
+            btn.classList.remove('active');
+            container.classList.remove('edit-mode-active');
+            this.draggingComponent = null;
+        }
+    },
+
+    // --- 修正：滑鼠按下邏輯 ---
+    handleMouseDown(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        if (this.isEditMode) {
+            // 裝修模式：優先偵測是否點擊到元件進行拖曳
+            const hitComponent = this.components.find(c => 
+                mx >= c.x && mx <= c.x + c.size &&
+                my >= c.y && my <= c.y + c.size
+            );
+
+            if (hitComponent) {
+                this.draggingComponent = hitComponent;
+                this.originalPos = { x: hitComponent.x, y: hitComponent.y };
+                this.dragOffset = { x: mx - hitComponent.x, y: my - hitComponent.y };
+            }
+        } else {
+            // 一般模式：選取員工
+            this.selectedEmp = this.employees.find(emp => 
+                Math.sqrt((mx - emp.x)**2 + (my - emp.y)**2) < 20
+            );
+            
+            if (this.selectedEmp) UI.showPanel(this.selectedEmp);
+            else UI.hidePanel();
+        }
+    },
+
+    // --- 新增：滑鼠移動邏輯（實現拖曳與網格吸附） ---
+    handleMouseMove(e) {
+        if (!this.isEditMode || !this.draggingComponent) return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        // 計算新座標並即時對齊網格
+        let newX = mx - this.dragOffset.x;
+        let newY = my - this.dragOffset.y;
+
+        // 網格吸附邏輯
+        this.draggingComponent.x = Math.round(newX / this.gridSize) * this.gridSize;
+        this.draggingComponent.y = Math.round(newY / this.gridSize) * this.gridSize;
+    },
+
+    // --- 新增：滑鼠鬆開邏輯（碰撞檢查） ---
+    handleMouseUp(e) {
+        if (!this.isEditMode || !this.draggingComponent) return;
+
+        // 檢查放置位置是否與其他元件重疊
+        const isOverlap = this.components.some(c => 
+            c !== this.draggingComponent && 
+            c.x === this.draggingComponent.x && 
+            c.y === this.draggingComponent.y
+        );
+
+        // 如果重疊，彈回原始位置
+        if (isOverlap) {
+            this.draggingComponent.x = this.originalPos.x;
+            this.draggingComponent.y = this.originalPos.y;
+            console.log("位置重疊，元件已彈回！");
+        }
+
+        this.draggingComponent = null;
+    },
+
     getValidPosition() {
         let x, y, isOverlap;
         let attempts = 0;
         const maxAttempts = 100;
 
         do {
-            // 計算畫布內可用的網格區域
             const cols = Math.floor((this.canvas.width - this.officePadding * 2) / this.gridSize);
             const rows = Math.floor((this.canvas.height - this.officePadding * 2) / this.gridSize);
-            
-            // 隨機選取一個網格點並對齊
             const col = Math.floor(Math.random() * cols);
             const row = Math.floor(Math.random() * rows);
             
             x = this.officePadding + col * this.gridSize;
             y = this.officePadding + row * this.gridSize;
 
-            // 檢查該座標是否已經有其他元件
             isOverlap = this.components.some(c => 
                 Math.abs(c.x - x) < this.gridSize && Math.abs(c.y - y) < this.gridSize
             );
-
             attempts++;
         } while (isOverlap && attempts < maxAttempts);
 
         return { x, y };
     },
 
-    // 招募員工：從門口進來
     recruit() {
         if (this.money >= 1000) {
             this.money -= 1000;
@@ -87,12 +175,10 @@ const Game = {
     },
 
     getDoorPosition() {
-        // 取得第一個門的位置，如果沒門則預設
         const door = this.components.find(c => c.type === 'Door');
         return door ? { x: door.x, y: door.y } : { x: 50, y: 50 };
     },
 
-    // 購買電腦：使用網格對齊邏輯
     buyPC() {
         if (this.money >= 500) {
             const pos = this.getValidPosition();
@@ -102,7 +188,6 @@ const Game = {
         }
     },
 
-    // 購買辦公桌：使用網格對齊邏輯
     buyDesk() {
         if (this.money >= 300) {
             const pos = this.getValidPosition();
@@ -130,19 +215,6 @@ const Game = {
         }
     },
 
-    handleClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-
-        this.selectedEmp = this.employees.find(emp => 
-            Math.sqrt((mx - emp.x)**2 + (my - emp.y)**2) < 20
-        );
-        
-        if (this.selectedEmp) UI.showPanel(this.selectedEmp);
-        else UI.hidePanel();
-    },
-
     updateUI() {
         document.getElementById('money-display').innerText = Math.floor(this.money);
         document.getElementById('staff-count').innerText = this.employees.length;
@@ -158,8 +230,10 @@ const Game = {
     },
 
     handleProjects() {
+        // 如果是裝修模式，暫停專案進度
+        if (this.isEditMode) return;
+
         this.employees.forEach(emp => {
-            // 只有正在工作且對象是 PC 的 IT 員能產出進度
             if (emp.state === 'WORKING' && emp.target && emp.target.type === 'PC') {
                 this.projectProgress += (emp.iq / 1000);
             }
@@ -175,13 +249,13 @@ const Game = {
     loop() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // 1. 更新遊戲時間：調慢後的流速
-        this.gameHour += this.timeSpeed;
-        if (this.gameHour >= 24) {
-            this.gameHour = 0; 
+        // 1. 更新遊戲時間 (裝修模式時時間停止)
+        if (!this.isEditMode) {
+            this.gameHour += this.timeSpeed;
+            if (this.gameHour >= 24) this.gameHour = 0;
         }
 
-        // 2. 畫網格背景：視覺上對齊 gridSize
+        // 2. 畫網格背景
         this.ctx.strokeStyle = '#334155';
         this.ctx.lineWidth = 0.5;
         for(let i=0; i<this.canvas.width; i+=this.gridSize) {
@@ -191,12 +265,21 @@ const Game = {
             this.ctx.beginPath(); this.ctx.moveTo(0,j); this.ctx.lineTo(this.canvas.width,j); this.ctx.stroke();
         }
 
-        // 3. 繪製所有設備
-        this.components.forEach(c => c.draw(this.ctx));
+        // 3. 繪製設備
+        this.components.forEach(c => {
+            // 如果是正在拖曳的元件，畫一個發光效果
+            if (c === this.draggingComponent) {
+                this.ctx.shadowBlur = 15;
+                this.ctx.shadowColor = '#ec4899';
+            }
+            c.draw(this.ctx);
+            this.ctx.shadowBlur = 0;
+        });
 
         // 4. 更新並繪製員工
         this.employees.forEach(e => {
-            // 修正：現在傳入 currentHour，Employee.js 內的鎖定邏輯會生效
+            // 如果是裝修模式，員工可以選擇原地踏步或繼續工作，這裡我們讓他們繼續，
+            // 這樣你可以即時測試搬動設備後，員工路徑的自動修正。
             e.update(this.components, this.gameHour);
             e.draw(this.ctx, e === this.selectedEmp);
         });
