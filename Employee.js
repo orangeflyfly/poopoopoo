@@ -25,10 +25,16 @@ class Employee {
      * @param {number} currentHour 當前遊戲小時 (0-23)
      */
     update(components, currentHour) {
-        // 如果是下班時間且人還在公司，強制進入回家邏輯
         const isWorkTime = currentHour >= 8 && currentHour < 17;
         
-        if (!isWorkTime) {
+        // 修正：如果是上班時間且目前是下班狀態，則重置狀態準備上班
+        if (isWorkTime && this.state === 'OFF_WORK') {
+            this.state = 'IDLE';
+        }
+
+        // 修正：只有在「非上班時間」且「還沒進入 OFF_WORK 狀態」時，才切換到 GOING_HOME
+        // 這樣就不會發生進門後又被重設為 GOING_HOME 的鬼打牆現象
+        if (!isWorkTime && this.state !== 'OFF_WORK') {
             this.state = 'GOING_HOME';
         }
 
@@ -44,12 +50,26 @@ class Employee {
     think(components, isWorkTime) {
         // 1. 下班邏輯優先權最高
         if (this.state === 'GOING_HOME') {
-            const door = components.find(c => c.type === 'Door');
-            if (door) {
-                this.target = door;
+            // 修正：尋找最近的門，而不是第一個
+            const doors = components.filter(c => c.type === 'Door');
+            if (doors.length > 0) {
+                let closestDoor = null;
+                let minDist = Infinity;
+
+                doors.forEach(door => {
+                    const d = Math.sqrt((door.x - this.x) ** 2 + (door.y - this.y) ** 2);
+                    if (d < minDist) {
+                        minDist = d;
+                        closestDoor = door;
+                    }
+                });
+                this.target = closestDoor;
             }
             return;
         }
+
+        // 如果已經下班，不進行後續思考
+        if (this.state === 'OFF_WORK') return;
 
         // 2. 如果體力太低 (<20)，強制尋找健身房或休息區
         if (this.stamina < 20 && isWorkTime) {
@@ -106,7 +126,6 @@ class Employee {
                 this.iq += 0.05;              // 訓練智力
                 this.stamina -= 0.1;         // 消耗體力
                 this.stress += 0.02;         // 增加壓力
-                // 這裡的錢會由 main.js 根據 iq 判斷產出
                 break;
             
             case 'Desk':
@@ -161,7 +180,7 @@ class Employee {
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         
-        // 顏色根據狀態改變：工作(藍/黃), 休息/健身(綠), 累了(紅)
+        // 顏色根據狀態改變
         if (this.stamina < 20) {
             ctx.fillStyle = '#f87171'; // 累了變紅色
         } else if (this.state === 'TRAINING') {
