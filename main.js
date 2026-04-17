@@ -6,7 +6,7 @@ const Game = {
 
     // --- 遊戲狀態變數 ---
     gameHour: 8.0,
-    timeSpeed: 0.001,
+    timeSpeed: 0.001,        // 保持較慢的流速，讓對話氣泡有時間被看見
     projectProgress: 0,
     projectGoal: 100,
     projectReward: 5000,
@@ -15,11 +15,11 @@ const Game = {
     gridSize: 50,
     officePadding: 60,
 
-    // --- 新增：裝修模式相關變數 ---
-    isEditMode: false,          // 是否處於裝修模式
-    draggingComponent: null,    // 當前正在拖曳的元件
-    dragOffset: { x: 0, y: 0 }, // 滑鼠點擊位置與元件左上角的偏移量
-    originalPos: { x: 0, y: 0 }, // 拖曳前的原始位置（用於重疊時彈回）
+    // --- 裝修模式相關變數 ---
+    isEditMode: false,
+    draggingComponent: null,
+    dragOffset: { x: 0, y: 0 },
+    originalPos: { x: 0, y: 0 },
 
     init() {
         this.canvas = document.getElementById('gameCanvas');
@@ -32,7 +32,7 @@ const Game = {
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
         
-        // 初始設備
+        // 初始設備佈置 (對齊網格)
         this.components.push(new OfficeComponent(Date.now(), 'Door', 50, 250));
         this.components.push(new OfficeComponent(Date.now() + 1, 'PC', 150, 150));
         this.components.push(new OfficeComponent(Date.now() + 2, 'Desk', 150, 250));
@@ -45,7 +45,49 @@ const Game = {
         this.canvas.height = this.canvas.parentElement.clientHeight;
     },
 
-    // --- 新增：切換裝修模式 ---
+    // --- 招募系統：優先從 Config 讀取固定角色 ---
+    recruit() {
+        if (this.money >= 1000) {
+            this.money -= 1000;
+            
+            const fixedChars = GAME_CONFIG.FIXED_CHARACTERS;
+            const currentCount = this.employees.length;
+            
+            let name, trait, specialty;
+
+            // 如果還有固定角色名額，依序招募
+            if (currentCount < fixedChars.length) {
+                const charData = fixedChars[currentCount];
+                name = charData.name;
+                trait = charData.trait;
+                specialty = charData.specialty;
+                console.log(`招募固定角色：${name} (${trait})`);
+            } else {
+                // 固定角色用完後，隨機生成路人弟子
+                const randomTraits = Object.keys(GAME_CONFIG.TRAITS);
+                name = "外門弟子 " + (currentCount + 1);
+                trait = randomTraits[Math.floor(Math.random() * randomTraits.length)];
+                specialty = Math.random() > 0.5 ? 'IT' : 'Admin';
+                console.log(`招募隨機弟子：${name}`);
+            }
+
+            const doorPos = this.getDoorPosition();
+            const newEmp = new Employee(
+                Date.now(), 
+                name,
+                doorPos.x,
+                doorPos.y,
+                specialty,
+                trait // 傳入性格標籤給 Employee constructor
+            );
+            
+            this.employees.push(newEmp);
+            this.updateUI();
+        } else {
+            alert("資金不足，無法招募！");
+        }
+    },
+
     toggleEditMode() {
         this.isEditMode = !this.isEditMode;
         const btn = document.getElementById('edit-mode-btn');
@@ -55,7 +97,7 @@ const Game = {
             btn.innerText = "🛠️ 裝修模式：ON";
             btn.classList.add('active');
             container.classList.add('edit-mode-active');
-            this.selectedEmp = null; // 進入裝修模式時取消選取員工
+            this.selectedEmp = null;
             UI.hidePanel();
         } else {
             btn.innerText = "🛠️ 裝修模式：OFF";
@@ -65,14 +107,12 @@ const Game = {
         }
     },
 
-    // --- 修正：滑鼠按下邏輯 ---
     handleMouseDown(e) {
         const rect = this.canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
 
         if (this.isEditMode) {
-            // 裝修模式：優先偵測是否點擊到元件進行拖曳
             const hitComponent = this.components.find(c => 
                 mx >= c.x && mx <= c.x + c.size &&
                 my >= c.y && my <= c.y + c.size
@@ -84,7 +124,6 @@ const Game = {
                 this.dragOffset = { x: mx - hitComponent.x, y: my - hitComponent.y };
             }
         } else {
-            // 一般模式：選取員工
             this.selectedEmp = this.employees.find(emp => 
                 Math.sqrt((mx - emp.x)**2 + (my - emp.y)**2) < 20
             );
@@ -94,7 +133,6 @@ const Game = {
         }
     },
 
-    // --- 新增：滑鼠移動邏輯（實現拖曳與網格吸附） ---
     handleMouseMove(e) {
         if (!this.isEditMode || !this.draggingComponent) return;
 
@@ -102,31 +140,25 @@ const Game = {
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
 
-        // 計算新座標並即時對齊網格
         let newX = mx - this.dragOffset.x;
         let newY = my - this.dragOffset.y;
 
-        // 網格吸附邏輯
         this.draggingComponent.x = Math.round(newX / this.gridSize) * this.gridSize;
         this.draggingComponent.y = Math.round(newY / this.gridSize) * this.gridSize;
     },
 
-    // --- 新增：滑鼠鬆開邏輯（碰撞檢查） ---
     handleMouseUp(e) {
         if (!this.isEditMode || !this.draggingComponent) return;
 
-        // 檢查放置位置是否與其他元件重疊
         const isOverlap = this.components.some(c => 
             c !== this.draggingComponent && 
             c.x === this.draggingComponent.x && 
             c.y === this.draggingComponent.y
         );
 
-        // 如果重疊，彈回原始位置
         if (isOverlap) {
             this.draggingComponent.x = this.originalPos.x;
             this.draggingComponent.y = this.originalPos.y;
-            console.log("位置重疊，元件已彈回！");
         }
 
         this.draggingComponent = null;
@@ -153,25 +185,6 @@ const Game = {
         } while (isOverlap && attempts < maxAttempts);
 
         return { x, y };
-    },
-
-    recruit() {
-        if (this.money >= 1000) {
-            this.money -= 1000;
-            const type = Math.random() > 0.5 ? 'IT' : 'Admin';
-            const names = ['艾力克斯', '貝拉', '查理', '黛安娜', '愛德華'];
-            const doorPos = this.getDoorPosition();
-            
-            const newEmp = new Employee(
-                Date.now(), 
-                names[Math.floor(Math.random() * names.length)],
-                doorPos.x,
-                doorPos.y,
-                type
-            );
-            this.employees.push(newEmp);
-            this.updateUI();
-        }
     },
 
     getDoorPosition() {
@@ -230,12 +243,12 @@ const Game = {
     },
 
     handleProjects() {
-        // 如果是裝修模式，暫停專案進度
         if (this.isEditMode) return;
 
         this.employees.forEach(emp => {
             if (emp.state === 'WORKING' && emp.target && emp.target.type === 'PC') {
-                this.projectProgress += (emp.iq / 1000);
+                // 基礎進度產出受智力與效率影響
+                this.projectProgress += (emp.iq * (emp.eff / 20)) / 5000;
             }
         });
 
@@ -249,7 +262,7 @@ const Game = {
     loop() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // 1. 更新遊戲時間 (裝修模式時時間停止)
+        // 1. 更新遊戲時間
         if (!this.isEditMode) {
             this.gameHour += this.timeSpeed;
             if (this.gameHour >= 24) this.gameHour = 0;
@@ -267,7 +280,6 @@ const Game = {
 
         // 3. 繪製設備
         this.components.forEach(c => {
-            // 如果是正在拖曳的元件，畫一個發光效果
             if (c === this.draggingComponent) {
                 this.ctx.shadowBlur = 15;
                 this.ctx.shadowColor = '#ec4899';
@@ -278,8 +290,7 @@ const Game = {
 
         // 4. 更新並繪製員工
         this.employees.forEach(e => {
-            // 如果是裝修模式，員工可以選擇原地踏步或繼續工作，這裡我們讓他們繼續，
-            // 這樣你可以即時測試搬動設備後，員工路徑的自動修正。
+            // 這裡傳入 components 與 gameHour，Employee 內部會處理性格決策
             e.update(this.components, this.gameHour);
             e.draw(this.ctx, e === this.selectedEmp);
         });
