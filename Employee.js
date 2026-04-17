@@ -24,15 +24,16 @@ class Employee {
         this.speed = 1.2 + (this.eff / 100);
         this.radius = 12;
 
-        // --- 新增：行為決策變數 ---
-        this.stateTimer = 0;        // 狀態計時器，確保行為有持續性 (不抽筋)
-        this.currentSpeech = "";    // 當前說的話
-        this.speechTimer = 0;       // 話語顯示時間
+        // --- 行為決策與對話變數 ---
+        this.stateTimer = 0;        
+        this.currentSpeech = "";    
+        this.speechTimer = 0;       
+        this.socialCooldown = 0;    // 社交冷卻時間
     }
 
     /**
      * 隨機合成對話系統
-     * @param {string} type 狀態類型 (WORKING, SLACKING, etc.)
+     * @param {string} type 狀態類型
      */
     generateSentence(type) {
         const chunks = GAME_CONFIG.DIALOGUE_CHUNKS;
@@ -45,6 +46,12 @@ class Employee {
         if (type === 'WORKING') {
             action = chunks.WORKING[Math.floor(Math.random() * chunks.WORKING.length)];
             detail = chunks.WORKING_ACTION[Math.floor(Math.random() * chunks.WORKING_ACTION.length)];
+        } else if (type === 'CHATTING') {
+            // 聊天時隨機從聊天或開爛詞庫抽取
+            const pool = ["CHATTING", "SLACKING"];
+            const selected = pool[Math.floor(Math.random() * pool.length)];
+            action = chunks[selected] ? chunks[selected][Math.floor(Math.random() * chunks[selected].length)] : "聊點什麼";
+            detail = chunks[selected + "_ACTION"] ? chunks[selected + "_ACTION"][Math.floor(Math.random() * chunks[selected + "_ACTION"].length)] : "...";
         } else {
             action = chunks.SLACKING[Math.floor(Math.random() * chunks.SLACKING.length)];
             detail = chunks.SLACKING_ACTION[Math.floor(Math.random() * chunks.SLACKING_ACTION.length)];
@@ -53,12 +60,57 @@ class Employee {
         return `${intro}${action}${detail}${outro}`;
     }
 
-    update(components, currentHour) {
+    /**
+     * 社交偵測邏輯：尋找附近是否有同伴並開啟對話
+     */
+    checkSocial(allEmployees) {
+        // 下班、趕路或冷卻中不社交
+        if (this.socialCooldown > 0 || this.state === 'OFF_WORK' || this.state === 'GOING_HOME') return;
+
+        // 尋找 40 像素內的同伴 (排除自己、下班者與冷卻中的人)
+        const neighbor = allEmployees.find(other => {
+            if (other === this || other.state === 'OFF_WORK' || other.socialCooldown > 0) return false;
+            const d = Math.sqrt((other.x - this.x)**2 + (other.y - this.y)**2);
+            return d < 40; 
+        });
+
+        // 根據雙方社交機率進行「握手」
+        if (neighbor) {
+            const chance = (this.traits.chatChance + neighbor.traits.chatChance) / 2;
+            if (Math.random() < chance) {
+                this.startChat(neighbor);
+                neighbor.startChat(this);
+            }
+        }
+    }
+
+    /**
+     * 開始聊天狀態
+     */
+    startChat(partner) {
+        this.state = 'CHATTING';
+        this.target = null;
+        this.stateTimer = 120 + Math.random() * 100; // 聊天持續時間
+        this.socialCooldown = 600; // 聊完後冷卻 10 秒
+        
+        this.currentSpeech = this.generateSentence('CHATTING');
+        this.speechTimer = 100;
+
+        // 根據性格調整聊天後的影響
+        if (this.traitName === "社交") {
+            this.stress = Math.max(0, this.stress - 5); // 社交達人聊天減壓
+        } else if (this.traitName === "勤奮") {
+            this.stress += 2; // 勤奮的人覺得被打擾，壓力微升
+        }
+    }
+
+    update(components, currentHour, allEmployees) {
         const isWorkTime = currentHour >= 8 && currentHour < 17;
         
         // 計時器遞減
         if (this.stateTimer > 0) this.stateTimer--;
         if (this.speechTimer > 0) this.speechTimer--;
+        if (this.socialCooldown > 0) this.socialCooldown--;
 
         // 狀態重置邏輯
         if (isWorkTime && this.state === 'OFF_WORK') {
@@ -69,9 +121,17 @@ class Employee {
             this.state = 'GOING_HOME';
         }
 
-        // 只有在計時器歸零時，才進行下一次「思考」
+        // 只有在計時器歸零時，才進行下一次決策
         if (this.stateTimer <= 0) {
-            this.think(components, isWorkTime);
+            // 如果不在工作中，嘗試社交
+            if (this.state !== 'WORKING' && this.state !== 'TRAINING') {
+                this.checkSocial(allEmployees);
+            }
+
+            // 如果沒進入聊天狀態，才進行一般思考
+            if (this.state !== 'CHATTING') {
+                this.think(components, isWorkTime);
+            }
         }
 
         this.move();
@@ -82,7 +142,6 @@ class Employee {
     }
 
     think(components, isWorkTime) {
-        // 1. 下班優先
         if (this.state === 'GOING_HOME') {
             const doors = components.filter(c => c.type === 'Door');
             if (doors.length > 0) {
@@ -97,16 +156,14 @@ class Employee {
 
         if (this.state === 'OFF_WORK') return;
 
-        // --- 性格決策：計算開爛欲望 ---
-        // 懶散權重越高，體力還很高的時候就會想開爛
+        // 性格決策：計算開爛欲望
         const slackDesire = (100 - this.stamina) * this.traits.slackWeight + (Math.random() * 20);
         
         if (slackDesire > 70 && isWorkTime) {
-            this.state = 'SLACKING'; // 進入「開爛」狀態
+            this.state = 'SLACKING'; 
             this.target = null;
-            this.stateTimer = 180 + Math.random() * 200; // 爛在原地一段時間
+            this.stateTimer = 180 + Math.random() * 200; 
             
-            // 有機率說話
             if (Math.random() < this.traits.chatChance + 0.2) {
                 this.currentSpeech = this.generateSentence('SLACKING');
                 this.speechTimer = 120;
@@ -114,7 +171,6 @@ class Employee {
             return;
         }
 
-        // 2. 體力過低強制訓練 (不受性格影響，這是生存本能)
         if (this.stamina < 15 && isWorkTime) {
             this.state = 'TRAINING';
             const gym = components.find(c => c.type === 'Gym');
@@ -122,7 +178,6 @@ class Employee {
             return;
         }
 
-        // 3. 正常工作邏輯 (受工作意願權重影響)
         if (!this.target && isWorkTime) {
             const workChance = Math.random() * this.traits.workWeight;
             if (workChance > 0.3) {
@@ -135,20 +190,20 @@ class Employee {
                     ? matched[Math.floor(Math.random() * matched.length)]
                     : components.find(c => c.type === 'PC' || c.type === 'Desk');
                 
-                // 工作時也有機率自言自語
                 if (Math.random() < 0.05) {
                     this.currentSpeech = this.generateSentence('WORKING');
                     this.speechTimer = 100;
                 }
             } else {
                 this.state = 'IDLE';
-                this.stateTimer = 60; // 發呆一下再決定
+                this.stateTimer = 60;
             }
         }
     }
 
     move() {
-        if (this.state === 'OFF_WORK' || this.state === 'SLACKING') return;
+        // 聊天、開爛與下班時不移動
+        if (this.state === 'OFF_WORK' || this.state === 'SLACKING' || this.state === 'CHATTING') return;
         if (!this.target) return;
 
         const dx = (this.target.x + 20) - this.x;
@@ -171,7 +226,7 @@ class Employee {
             case 'PC':
                 this.iq += 0.05;
                 this.stamina -= 0.1;
-                this.stress += 0.02 * this.traits.stressGain; // 壓力累積受性格影響
+                this.stress += 0.02 * this.traits.stressGain;
                 break;
             case 'Desk':
                 this.eff += 0.05;
@@ -208,7 +263,6 @@ class Employee {
 
         ctx.save();
         
-        // 1. 繪製選中效果
         if (isSelected) {
             ctx.shadowBlur = 15;
             ctx.shadowColor = this.traits.color;
@@ -219,7 +273,6 @@ class Employee {
             ctx.stroke();
         }
 
-        // 2. 繪製身體 (顏色現在反映性格)
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.traits.color; 
@@ -228,43 +281,35 @@ class Employee {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // 3. 繪製體力條
         const barW = 24;
         ctx.fillStyle = '#334155';
         ctx.fillRect(this.x - barW/2, this.y - 20, barW, 4);
         ctx.fillStyle = this.stamina < 20 ? '#f87171' : '#4ade80';
         ctx.fillRect(this.x - barW/2, this.y - 20, barW * (this.stamina / this.maxStamina), 4);
 
-        // 4. 繪製名字與性格標籤
         ctx.fillStyle = "white";
         ctx.font = "10px Arial";
         ctx.textAlign = "center";
         ctx.fillText(`${this.name} (${this.traitName})`, this.x, this.y + 25);
 
-        // 5. --- 情緒氣泡與對話系統 ---
         let emoji = "";
         if (this.state === 'GOING_HOME') emoji = "🏃";
         else if (this.stamina < 15) emoji = "😫";
         else if (this.state === 'SLACKING') emoji = "🚬";
         else if (this.state === 'WORKING') emoji = "💻";
         else if (this.state === 'TRAINING') emoji = "💪";
+        else if (this.state === 'CHATTING') emoji = "💬";
 
-        // 顯示 Emoji
         if (emoji) {
             ctx.font = '16px Arial';
             ctx.fillText(emoji, this.x, this.y - 28);
         }
 
-        // 顯示合成對話 (如果有)
         if (this.speechTimer > 0 && this.currentSpeech) {
             ctx.font = '12px Microsoft JhengHei';
             const textWidth = ctx.measureText(this.currentSpeech).width;
-            
-            // 對話框背景
             ctx.fillStyle = "rgba(0,0,0,0.7)";
             ctx.fillRect(this.x - textWidth/2 - 5, this.y - 55, textWidth + 10, 20);
-            
-            // 對話文字
             ctx.fillStyle = "white";
             ctx.fillText(this.currentSpeech, this.x, this.y - 41);
         }
