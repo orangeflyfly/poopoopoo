@@ -1,0 +1,97 @@
+:root {
+    --bg-color: #0f172a;
+    --panel-bg: rgba(30, 41, 59, 0.85);
+    --accent: #38bdf8;
+    --success: #4ade80;
+    --danger: #f87171;
+    --text: #f8fafc;
+}
+
+body {
+    margin: 0;
+    background-color: var(--bg-color);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+}
+
+#game-wrapper {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.game-header {
+    display: flex;
+    gap: 20px;
+    padding: 15px 30px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, transparent 100%);
+    z-index: 10;
+}
+
+.stat {
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: var(--accent);
+}
+
+#game-container {
+    flex: 1;
+    position: relative;
+    background-color: #1e293b;
+}
+
+canvas {
+    display: block;
+}
+
+/* 資訊面板 */
+#info-panel {
+    position: absolute;
+    right: 20px;
+    top: 20px;
+    width: 280px;
+    background: var(--panel-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 20px;
+    transition: transform 0.3s ease;
+}
+
+#info-panel.hidden {
+    transform: translateX(120%);
+}
+
+.stat-group { margin-bottom: 15px; }
+.progress-bg { background: #334155; height: 10px; border-radius: 5px; margin-top: 5px; overflow: hidden;}
+.progress-fill { background: var(--success); height: 100%; width: 0%; transition: width 0.3s; }
+.progress-fill.stress { background: var(--danger); }
+
+/* 控制按鈕 */
+.game-footer {
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.9);
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.menu-btn {
+    padding: 10px 20px;
+    background: var(--panel-bg);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.menu-btn:hover {
+    background: var(--accent);
+    color: var(--bg-color);
+}
