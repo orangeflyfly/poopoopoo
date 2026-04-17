@@ -49,6 +49,16 @@ const Game = {
         }
     },
 
+    // 修正部分：補上購置桌椅的邏輯
+    buyDesk() {
+        if (this.money >= 300) {
+            this.money -= 300;
+            // 這裡 type 必須為 'Desk' 才能觸發 Employee.js 裡的 Admin 邏輯判斷
+            this.components.push(new OfficeComponent(Date.now(), 'Desk', Math.random()*600+50, Math.random()*400+50));
+            this.updateUI();
+        }
+    },
+
     handleClick(e) {
         const rect = this.canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
