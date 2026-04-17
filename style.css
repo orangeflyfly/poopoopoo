@@ -2,6 +2,7 @@
     --bg-color: #0f172a;        /* 深色背景 */
     --panel-bg: rgba(30, 41, 59, 0.85);
     --accent: #38bdf8;         /* 科技藍 / 靈氣藍 */
+    --edit-mode: #ec4899;      /* 裝修模式專用：粉紫色 */
     --success: #4ade80;        /* 體力綠 / 成功 */
     --iq-color: #60a5fa;       /* 智力藍 */
     --eff-color: #fbbf24;      /* 效率黃 */
@@ -60,6 +61,14 @@ body {
     position: relative;
     background-color: #1e293b;
     overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+/* 當進入裝修模式時，容器邊框變色並更改滑鼠游標 */
+#game-container.edit-mode-active {
+    box-shadow: inset 0 0 50px rgba(236, 72, 153, 0.2);
+    border: 2px solid var(--edit-mode);
+    cursor: move;
 }
 
 canvas {
@@ -154,7 +163,7 @@ canvas {
     background: #0f172a;
     display: flex;
     justify-content: center;
-    flex-wrap: wrap; /* 讓按鈕在小螢幕時自動換行 */
+    flex-wrap: wrap; 
     gap: 15px;
     border-top: 1px solid var(--border);
     z-index: 10;
@@ -179,6 +188,26 @@ canvas {
     color: var(--bg-color);
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(56, 189, 248, 0.4);
+}
+
+/* 按鈕選中狀態 */
+.menu-btn.active {
+    background: var(--accent);
+    color: var(--bg-color);
+    box-shadow: 0 0 20px var(--accent);
+    border-color: #fff;
+}
+
+/* 裝修模式專用按鈕樣式 */
+.menu-btn.edit-btn {
+    border-color: var(--edit-mode);
+    color: var(--edit-mode);
+}
+
+.menu-btn.edit-btn:hover, .menu-btn.edit-btn.active {
+    background: var(--edit-mode);
+    color: white;
+    box-shadow: 0 0 20px var(--edit-mode);
 }
 
 .menu-btn:active {
