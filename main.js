@@ -4,12 +4,16 @@ const Game = {
     components: [],
     selectedEmp: null,
 
-    // --- 新增：遊戲時間與專案系統變數 ---
+    // --- 調整與新增變數 ---
     gameHour: 8.0,           // 遊戲從早上 8 點開始
-    timeSpeed: 0.005,        // 時間流逝速度
-    projectProgress: 0,      // 當前專案進度 (0-100)
-    projectGoal: 100,        // 專案目標
-    projectReward: 5000,     // 完成專案後的獎金
+    timeSpeed: 0.001,        // 修正 3：時間流速調慢 (原本 0.005 太快)
+    projectProgress: 0,      
+    projectGoal: 100,        
+    projectReward: 5000,     
+    
+    // 修正 4 & 5：定義網格大小與佈局範圍
+    gridSize: 50,            // 網格大小 50x50
+    officePadding: 60,       // 離邊界的距離
 
     init() {
         this.canvas = document.getElementById('gameCanvas');
@@ -20,10 +24,10 @@ const Game = {
         // 點擊偵測
         this.canvas.addEventListener('mousedown', (e) => this.handleClick(e));
         
-        // 初始設備：給予一個初始的門、一台電腦與一張桌子
+        // 初始設備：使用網格對齊的位置
         this.components.push(new OfficeComponent(Date.now(), 'Door', 50, 250));
-        this.components.push(new OfficeComponent(Date.now() + 1, 'PC', 200, 200));
-        this.components.push(new OfficeComponent(Date.now() + 2, 'Desk', 200, 350));
+        this.components.push(new OfficeComponent(Date.now() + 1, 'PC', 150, 150));
+        this.components.push(new OfficeComponent(Date.now() + 2, 'Desk', 150, 250));
         
         this.loop();
     },
@@ -33,18 +37,48 @@ const Game = {
         this.canvas.height = this.canvas.parentElement.clientHeight;
     },
 
-    // 招募員工
+    // 修正 4 & 5：核心邏輯 - 尋找不重疊且對齊網格的座標
+    getValidPosition() {
+        let x, y, isOverlap;
+        let attempts = 0;
+        const maxAttempts = 100;
+
+        do {
+            // 計算畫布內可用的網格區域
+            const cols = Math.floor((this.canvas.width - this.officePadding * 2) / this.gridSize);
+            const rows = Math.floor((this.canvas.height - this.officePadding * 2) / this.gridSize);
+            
+            // 隨機選取一個網格點並對齊
+            const col = Math.floor(Math.random() * cols);
+            const row = Math.floor(Math.random() * rows);
+            
+            x = this.officePadding + col * this.gridSize;
+            y = this.officePadding + row * this.gridSize;
+
+            // 檢查該座標是否已經有其他元件
+            isOverlap = this.components.some(c => 
+                Math.abs(c.x - x) < this.gridSize && Math.abs(c.y - y) < this.gridSize
+            );
+
+            attempts++;
+        } while (isOverlap && attempts < maxAttempts);
+
+        return { x, y };
+    },
+
+    // 招募員工：從門口進來
     recruit() {
         if (this.money >= 1000) {
             this.money -= 1000;
             const type = Math.random() > 0.5 ? 'IT' : 'Admin';
             const names = ['艾力克斯', '貝拉', '查理', '黛安娜', '愛德華'];
+            const doorPos = this.getDoorPosition();
+            
             const newEmp = new Employee(
                 Date.now(), 
                 names[Math.floor(Math.random() * names.length)],
-                // 員工從「門」的位置進入公司，如果沒門就在左側生成
-                this.getDoorPosition().x,
-                this.getDoorPosition().y,
+                doorPos.x,
+                doorPos.y,
                 type
             );
             this.employees.push(newEmp);
@@ -52,44 +86,46 @@ const Game = {
         }
     },
 
-    // 取得門的位置邏輯
     getDoorPosition() {
+        // 取得第一個門的位置，如果沒門則預設
         const door = this.components.find(c => c.type === 'Door');
         return door ? { x: door.x, y: door.y } : { x: 50, y: 50 };
     },
 
-    // 購買電腦
+    // 購買電腦：使用網格對齊邏輯
     buyPC() {
         if (this.money >= 500) {
+            const pos = this.getValidPosition();
             this.money -= 500;
-            this.components.push(new OfficeComponent(Date.now(), 'PC', Math.random() * (this.canvas.width - 100) + 50, Math.random() * (this.canvas.height - 150) + 50));
+            this.components.push(new OfficeComponent(Date.now(), 'PC', pos.x, pos.y));
             this.updateUI();
         }
     },
 
-    // 購買辦公桌
+    // 購買辦公桌：使用網格對齊邏輯
     buyDesk() {
         if (this.money >= 300) {
+            const pos = this.getValidPosition();
             this.money -= 300;
-            this.components.push(new OfficeComponent(Date.now(), 'Desk', Math.random() * (this.canvas.width - 100) + 50, Math.random() * (this.canvas.height - 150) + 50));
+            this.components.push(new OfficeComponent(Date.now(), 'Desk', pos.x, pos.y));
             this.updateUI();
         }
     },
 
-    // --- 新增：購買健身房 ---
     buyGym() {
         if (this.money >= 800) {
+            const pos = this.getValidPosition();
             this.money -= 800;
-            this.components.push(new OfficeComponent(Date.now(), 'Gym', Math.random() * (this.canvas.width - 100) + 50, Math.random() * (this.canvas.height - 150) + 50));
+            this.components.push(new OfficeComponent(Date.now(), 'Gym', pos.x, pos.y));
             this.updateUI();
         }
     },
 
-    // --- 新增：購買門 (如果玩家想換位置) ---
     buyDoor() {
         if (this.money >= 500) {
+            const pos = this.getValidPosition();
             this.money -= 500;
-            this.components.push(new OfficeComponent(Date.now(), 'Door', Math.random() * (this.canvas.width - 100) + 50, Math.random() * (this.canvas.height - 150) + 50));
+            this.components.push(new OfficeComponent(Date.now(), 'Door', pos.x, pos.y));
             this.updateUI();
         }
     },
@@ -111,7 +147,6 @@ const Game = {
         document.getElementById('money-display').innerText = Math.floor(this.money);
         document.getElementById('staff-count').innerText = this.employees.length;
         
-        // 更新時間與專案進度顯示 (假設 index.html 有這些 ID)
         if(document.getElementById('game-time')) {
             const h = Math.floor(this.gameHour);
             const m = Math.floor((this.gameHour % 1) * 60);
@@ -122,48 +157,47 @@ const Game = {
         }
     },
 
-    // --- 新增：處理專案進度與賺錢 ---
     handleProjects() {
         this.employees.forEach(emp => {
-            // 只有正在用電腦的 IT 人員能推進專案
+            // 只有正在工作且對象是 PC 的 IT 員能產出進度
             if (emp.state === 'WORKING' && emp.target && emp.target.type === 'PC') {
-                // 進度增加量取決於員工智力 (IQ)
                 this.projectProgress += (emp.iq / 1000);
             }
         });
 
-        // 專案完成
         if (this.projectProgress >= this.projectGoal) {
             this.money += this.projectReward;
-            this.projectProgress = 0; // 重置專案，準備下一個
+            this.projectProgress = 0; 
             this.updateUI();
-            console.log("專案完成！獲得獎金:", this.projectReward);
         }
     },
 
     loop() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // 1. 更新遊戲時間
+        // 1. 更新遊戲時間：調慢後的流速
         this.gameHour += this.timeSpeed;
         if (this.gameHour >= 24) {
-            this.gameHour = 0; // 進入第二天
+            this.gameHour = 0; 
         }
 
-        // 2. 畫網格背景
+        // 2. 畫網格背景：視覺上對齊 gridSize
         this.ctx.strokeStyle = '#334155';
         this.ctx.lineWidth = 0.5;
-        for(let i=0; i<this.canvas.width; i+=50) {
+        for(let i=0; i<this.canvas.width; i+=this.gridSize) {
             this.ctx.beginPath(); this.ctx.moveTo(i,0); this.ctx.lineTo(i,this.canvas.height); this.ctx.stroke();
+        }
+        for(let j=0; j<this.canvas.height; j+=this.gridSize) {
+            this.ctx.beginPath(); this.ctx.moveTo(0,j); this.ctx.lineTo(this.canvas.width,j); this.ctx.stroke();
         }
 
         // 3. 繪製所有設備
         this.components.forEach(c => c.draw(this.ctx));
 
-        // 4. 更新並繪製所有員工
+        // 4. 更新並繪製員工
         this.employees.forEach(e => {
-            // 傳入當前的小時，讓員工決定要上班、工作還是下班
-            e.update(this.components, Math.floor(this.gameHour));
+            // 修正：現在傳入 currentHour，Employee.js 內的鎖定邏輯會生效
+            e.update(this.components, this.gameHour);
             e.draw(this.ctx, e === this.selectedEmp);
         });
 
@@ -190,7 +224,6 @@ const UI = {
     updatePanel(emp) {
         document.getElementById('bar-iq').style.width = `${Math.min(emp.iq, 100)}%`;
         document.getElementById('bar-eff').style.width = `${Math.min(emp.eff, 100)}%`;
-        // 壓力條與體力條更新
         if(document.getElementById('bar-stress')) {
             document.getElementById('bar-stress').style.width = `${Math.min(emp.stress, 100)}%`;
         }
